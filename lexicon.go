@@ -3,11 +3,68 @@ package main
 import "strings"
 
 type Schema struct {
-	prefix string
-
 	Lexicon int                    `json:"lexicon"`
 	ID      string                 `json:"id"`
 	Defs    map[string]*TypeSchema `json:"defs"`
+}
+
+type TypeSchema struct {
+	// all
+	Type        string `json:"type"`
+	Description string `json:"description"`
+
+	// record
+	Key    string      `json:"key"`
+	Record *TypeSchema `json:"record"`
+
+	// subscription, query
+	Parameters *TypeSchema `json:"parameters"`
+
+	// procedure
+	Input *InputType `json:"input"`
+
+	// query, procedure
+	Output *OutputType `json:"output"`
+
+	// ref
+	Ref string `json:"ref"`
+
+	// union
+	Refs []string `json:"refs"`
+
+	// object, params
+	Required []string `json:"required"`
+
+	// object
+	Nullable []string `json:"nullable"`
+
+	// object, params
+	Properties map[string]*TypeSchema `json:"properties"`
+
+	// array, string
+	MinLength *int `json:"minLength,omitempty"`
+
+	// video, audio, array, string, bytes
+	MaxLength *int `json:"maxLength,omitempty"`
+
+	// array
+	Items *TypeSchema `json:"items"`
+
+	// bool, number, integer, string
+	Const any `json:"const,omitempty"`
+
+	// number, integer, string,
+	Enum []any `json:"enum"`
+
+	// union
+	Closed bool `json:"closed"`
+
+	// bool, number, integer, string
+	Default any `json:"default,omitempty"`
+
+	// number, integer
+	Minimum any `json:"minimum"`
+	Maximum any `json:"maximum"`
 }
 
 // TODO(bnewbold): suspect this param needs updating for lex refactors
@@ -25,31 +82,6 @@ type OutputType struct {
 type InputType struct {
 	Encoding string      `json:"encoding"`
 	Schema   *TypeSchema `json:"schema"`
-}
-
-type TypeSchema struct {
-	Type        string      `json:"type"`
-	Key         string      `json:"key"`
-	Description string      `json:"description"`
-	Parameters  *TypeSchema `json:"parameters"`
-	Input       *InputType  `json:"input"`
-	Output      *OutputType `json:"output"`
-	Record      *TypeSchema `json:"record"`
-
-	Ref        string                 `json:"ref"`
-	Refs       []string               `json:"refs"`
-	Required   []string               `json:"required"`
-	Nullable   []string               `json:"nullable"`
-	Properties map[string]*TypeSchema `json:"properties"`
-	MaxLength  int                    `json:"maxLength"`
-	Items      *TypeSchema            `json:"items"`
-	Const      any                    `json:"const"`
-	Enum       []string               `json:"enum"`
-	Closed     bool                   `json:"closed"`
-
-	Default any `json:"default"`
-	Minimum any `json:"minimum"`
-	Maximum any `json:"maximum"`
 }
 
 func (s *Schema) Name() string {

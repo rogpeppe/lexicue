@@ -1,22 +1,28 @@
 // derived from the doc in https://atproto.com/specs/lexicon
+// Updated so it validates all the schemas at https://github.com/bluesky-social/atproto/tree/aabbf43a7f86b37cefbba614d408534b59f59525/lexicons.
+
 package lexicon
 
 #LexiconDoc: {
 	lexicon!:     1
 	id!:          string
-	revision?:    number
+	revision?:    _|_ // Not apparently used; originally number.
 	description?: string
 	defs!: [string]: #LexUserType | #LexType
 }
 
 #LexType: #LexArray |
 	#LexObject |
-	#LexBlob |
 	#LexPrimitive |
 	#LexUnion |
+	#LexBlob |
 	#LexCIDLink |
-	#LexRef |
-	[...#LexRef]
+	#LexRef
+
+	// The original document allowed an array of LexRef here, but no documents
+	// use that functionality and it's not clear to me what it would mean, so I've left
+	// it out for now.
+	// | [...#LexRef]
 
 #LexPrimitive: #LexBoolean |
 	#LexNumber |
@@ -41,13 +47,13 @@ package lexicon
 
 #LexRef: string | {
 	type!: "ref"
-	ref!:   string
+	ref!:  string
 }
 
 #LexUnion: {
 	type!: "union"
 	refs!: [... #LexRef]
-	closed?: bool		// can this be false?
+	closed?: bool // can this be false?
 }
 
 #LexToken: {
@@ -85,16 +91,15 @@ package lexicon
 
 #LexXrpcQuery: {
 	#Common
-	type!: "query"
+	type!:       "query"
 	parameters!: #LexParams
-	output!: #LexXrpcBody
+	output!:     #LexXrpcBody
 	errors?: [... #LexXrpcError]
 }
 
 #LexXrpcProcedure: {
 	#Common
-	type!: "procedure"
-	parameters?: [string]: #LexPrimitive
+	type!:   "procedure"
 	input?:  #LexXrpcBody
 	output?: #LexXrpcBody
 	errors?: [... #LexXrpcError]
@@ -123,14 +128,14 @@ package lexicon
 	#Common
 	type!: "blob"
 	accept?: [... string]
-	maxSize?: number
+	maxSize?: int
 }
 
 #LexImage: {
 	#Common
 	type!: "image"
 	accept?: [... string]
-	maxSize?:   number
+	maxSize?:   int
 	maxWidth?:  number
 	maxHeight?: number
 }
@@ -139,7 +144,7 @@ package lexicon
 	#Common
 	type!: "video"
 	accept?: [... string]
-	maxSize?:   number
+	maxSize?:   int
 	maxWidth?:  number
 	maxHeight?: number
 	maxLength?: number
@@ -149,15 +154,15 @@ package lexicon
 	#Common
 	type!: "audio"
 	accept?: [... string]
-	maxSize?:   number
+	maxSize?:   int
 	maxLength?: number
 }
 
 #LexSubscription: {
 	#Common
-	type!: "subscription"
+	type!:       "subscription"
 	parameters!: #LexParams
-	message?: #LexSubscriptionMessage
+	message?:    #LexSubscriptionMessage
 	errors?: [... #LexXrpcError]
 }
 
@@ -220,7 +225,7 @@ package lexicon
 
 #LexBytes: {
 	#Common
-	type!: "bytes"
+	type!:      "bytes"
 	maxLength?: int
 }
 
