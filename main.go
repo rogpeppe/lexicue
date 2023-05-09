@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,9 +18,11 @@ import (
 	"cuelang.org/go/cue/errors"
 	"cuelang.org/go/cue/format"
 	"cuelang.org/go/cue/token"
-	cuejson "cuelang.org/go/encoding/json"
 	"github.com/kr/fs"
 )
+
+// TODO comments
+// TODO imports/references
 
 //go:embed lexicon.cue
 var lexiconSchemaSource string
@@ -36,6 +39,9 @@ func main() {
 	}
 	w := fs.Walk("/home/rogpeppe/other/bluesky/atproto/lexicons")
 	n := 0
+	fmt.Printf("-- cue.mod/module.cue --\n")
+	fmt.Printf("module: \"test.org\"\n")
+	deps := make(map[dep]bool)
 	for w.Step() {
 		if w.Stat().IsDir() {
 			continue
@@ -43,16 +49,92 @@ func main() {
 		if !strings.HasSuffix(w.Path(), ".json") {
 			continue
 		}
-		if err := genCUE(w.Path(), lexiconSchema); err != nil {
+		if err := genCUE(w.Path(), lexiconSchema, deps); err != nil {
 			fmt.Printf("%s: %v\n", w.Path(), err)
 			return
 		}
 		n++
 	}
+	fmt.Printf("-- deps.mermaid --\n")
+	printDeps(deps)
+	fmt.Printf("-- cycles --\n")
+	printCycles(deps)
 	fmt.Printf("%d schemas checked\n", n)
 }
 
-func genCUE(f string, lexiconSchema cue.Value) error {
+func printCycles(deps map[dep]bool) {
+	arcs := make(map[string][]string)
+	for d := range deps {
+		arcs[d.from] = append(arcs[d.from], d.to)
+	}
+	cycles := make(map[string]bool)
+	for d := range arcs {
+		visit := make(map[string]bool)
+		checkCycle(cycles, d, arcs, visit, nil)
+	}
+	for c := range cycles {
+		fmt.Printf("%s\n", c)
+	}
+}
+
+func checkCycle(cycles map[string]bool, pkg string, arcs map[string][]string, visit map[string]bool, path []string) {
+	if visit[pkg] {
+		cp := path
+		for i, p := range cp {
+			if p == pkg {
+				cp = cp[i:]
+				break
+			}
+		}
+		cycles[strings.Join(rev(append(cp, pkg)), " -> ")] = true
+		return
+	}
+	visit[pkg] = true
+	path = append(path, pkg)
+	for _, d := range arcs[pkg] {
+		checkCycle(cycles, d, arcs, visit, path)
+	}
+	delete(visit, pkg)
+}
+
+func printDeps(deps map[dep]bool) {
+	fmt.Printf("flowchart LR\n")
+	ids := make(map[string]string)
+	nodeID := func(name string) string {
+		if id, ok := ids[name]; ok {
+			return id
+		}
+		id := fmt.Sprintf("id%d", len(ids))
+		ids[name] = id
+		fmt.Printf("\t%s[%s]\n", id, name)
+		return id
+	}
+	for d := range deps {
+		if d.to == "cueschemas.org/lexicue" {
+			continue
+		}
+		fmt.Printf("\t%s --> %s\n", nodeID(d.from), nodeID(d.to))
+	}
+}
+
+type dep struct {
+	from, to string
+}
+
+type generator struct {
+	pkg            string
+	defs           map[string]*TypeSchema
+	cueDefs        map[string]ast.Expr
+	importsByPkg   map[string]string
+	importsByIdent map[string]string
+}
+
+func genCUE(f string, lexiconSchema cue.Value, deps map[dep]bool) error {
+	defer func() {
+		if err := recover(); err != nil {
+			panic(fmt.Errorf("panic on %q: %v", f, err))
+		}
+	}()
 	data, err := os.ReadFile(f)
 	if err != nil {
 		return err
@@ -61,16 +143,27 @@ func genCUE(f string, lexiconSchema cue.Value) error {
 	if err := json.Unmarshal(data, &schema); err != nil {
 		return err
 	}
-	if err := cuejson.Validate(data, lexiconSchema); err != nil {
+	if err := validateJSON(data, f, lexiconSchema); err != nil {
 		return fmt.Errorf("cue validate: %v", errors.Details(err, nil))
 	}
-	g := &generator{
-		id:              schema.ID,
-		defs:            schema.Defs,
-		lexiconPkgIdent: ast.NewIdent("lex"), // TODO import
-		cueDefs:         make(map[string]ast.Expr),
+	pkg, err := id2Pkg(schema.ID)
+	if err != nil {
+		return err
 	}
-	astf := &ast.File{}
+	g := &generator{
+		pkg:            pkg,
+		defs:           schema.Defs,
+		cueDefs:        make(map[string]ast.Expr),
+		importsByPkg:   make(map[string]string),
+		importsByIdent: make(map[string]string),
+	}
+	astf := &ast.File{
+		Decls: []ast.Decl{
+			&ast.Package{
+				Name: ast.NewIdent(impliedImportIdent(pkg)),
+			},
+		},
+	}
 	for _, name := range sortedKeys(schema.Defs) {
 		e, err := g.cueForDefinition(schema.Defs[name])
 		if err != nil {
@@ -81,11 +174,30 @@ func genCUE(f string, lexiconSchema cue.Value) error {
 			Value: e,
 		})
 	}
+	for pkgPath, ident := range g.importsByPkg {
+		ispec := &ast.ImportSpec{
+			Path: stringLit(pkgPath),
+		}
+		if impliedImportIdent(pkgPath) != ident {
+			ispec.Name = ast.NewIdent(ident)
+		}
+		astf.Imports = append(astf.Imports, ispec)
+		deps[dep{g.pkg, pkgPath}] = true
+	}
+	if len(astf.Imports) > 0 {
+		decls := make([]ast.Decl, len(astf.Decls)+1)
+		decls[0] = astf.Decls[0]
+		decls[1] = &ast.ImportDecl{
+			Specs: astf.Imports,
+		}
+		copy(decls[2:], astf.Decls[1:])
+		astf.Decls = decls
+	}
 	outData, err := format.Node(astf)
 	if err != nil {
-		return fmt.Errorf("cannot format source: %v", err)
+		return fmt.Errorf("cannot format source: %v (%v)", err, errors.Details(err, nil))
 	}
-	fmt.Printf("-- %s --\n", f)
+	fmt.Printf("-- %s/defs.cue --\n", strings.TrimPrefix(g.pkg, "test.org/"))
 	os.Stdout.Write(outData)
 	return nil
 }
@@ -93,19 +205,61 @@ func genCUE(f string, lexiconSchema cue.Value) error {
 func (g *generator) cueForDefinition(t *TypeSchema) (ast.Expr, error) {
 	switch t.Type {
 	case "query":
-		return g.lexiconValue("query", ast.NewIdent("TODO")), nil
+		e := &ast.StructLit{}
+		g.addXRPCBodyField(e, "output", t.Output)
+		if t.Parameters != nil {
+			parametersExpr, err := g.cueForType(t.Parameters)
+			if err != nil {
+				return nil, err
+			}
+			addField(e, "parameters", parametersExpr)
+		}
+		return g.lexiconValue("query", e), nil
 	case "procedure":
-		return g.lexiconValue("procedure", ast.NewIdent("TODO")), nil
+		e := &ast.StructLit{}
+		g.addXRPCBodyField(e, "input", t.Input)
+		g.addXRPCBodyField(e, "output", t.Output)
+		// TODO errors
+		return g.lexiconValue("procedure", e), nil
 	case "record":
-		return g.lexiconValue("record", ast.NewIdent("TODO")), nil
-	case "image":
-		return g.lexiconValue("image", ast.NewIdent("TODO")), nil
-	case "video":
-		return g.lexiconValue("video", ast.NewIdent("TODO")), nil
-	case "audio":
-		return g.lexiconValue("audio", ast.NewIdent("TODO")), nil
+		e := &ast.StructLit{}
+		if t.Key != "" {
+			addField(e, "key", stringLit(t.Key))
+		}
+		record, err := g.cueForType(t.Record)
+		if err != nil {
+			return nil, err
+		}
+		addField(e, "record", record)
+		return g.lexiconValue("record", e), nil
 	case "subscription":
-		return g.lexiconValue("subscription", ast.NewIdent("TODO")), nil
+		e := &ast.StructLit{}
+		params, err := g.cueForType(t.Parameters)
+		if err != nil {
+			return nil, err
+		}
+		addField(e, "parameters", params)
+		if t.Message != nil {
+			schema, err := g.cueForType(t.Message.Schema)
+			if err != nil {
+				return nil, err
+			}
+			addField(e, "message", &ast.StructLit{
+				Elts: []ast.Decl{
+					&ast.Field{
+						Label: ast.NewIdent("schema"),
+						Value: schema,
+					},
+				},
+			})
+		}
+		return g.lexiconValue("subscription", e), nil
+	case "image":
+		return g.lexiconValue("image", ast.NewIdent("type_TODO")), nil
+	case "video":
+		return g.lexiconValue("video", ast.NewIdent("type_TODO")), nil
+	case "audio":
+		return g.lexiconValue("audio", ast.NewIdent("type_TODO")), nil
 	default:
 		e, err := g.cueForType(t)
 		if err != nil {
@@ -115,11 +269,35 @@ func (g *generator) cueForDefinition(t *TypeSchema) (ast.Expr, error) {
 	}
 }
 
-type generator struct {
-	id              string
-	defs            map[string]*TypeSchema
-	cueDefs         map[string]ast.Expr
-	lexiconPkgIdent ast.Expr
+func (g *generator) addXRPCBodyField(lit *ast.StructLit, fieldName string, body *BodyType) error {
+	if body == nil {
+		return nil
+	}
+	e, err := g.cueForXRPCBody(body)
+	if err != nil {
+		return err
+	}
+	addField(lit, fieldName, e)
+	return nil
+}
+
+func (g *generator) cueForXRPCBody(body *BodyType) (ast.Expr, error) {
+	e := &ast.StructLit{
+		Elts: []ast.Decl{
+			&ast.Field{
+				Label: ast.NewIdent("encoding"),
+				Value: stringLit(body.Encoding),
+			},
+		},
+	}
+	if body.Schema != nil {
+		schemaExpr, err := g.cueForType(body.Schema)
+		if err != nil {
+			return nil, err
+		}
+		addField(e, "schema", schemaExpr)
+	}
+	return e, nil
 }
 
 func (g *generator) cueForType(t *TypeSchema) (ast.Expr, error) {
@@ -148,7 +326,7 @@ func (g *generator) cueForType(t *TypeSchema) (ast.Expr, error) {
 			Elts: []ast.Decl{
 				&ast.Field{
 					Label: ast.NewIdent("token"),
-					Value: ast.NewString(g.id + ".TODO"),
+					Value: ast.NewString(g.pkg + ".TODO"),
 				},
 			},
 		}), nil
@@ -181,6 +359,8 @@ func (g *generator) cueForType(t *TypeSchema) (ast.Expr, error) {
 			}
 			if required[name] {
 				f.Constraint = token.NOT
+			} else {
+				f.Constraint = token.OPTION
 			}
 			lit.Elts = append(lit.Elts, f)
 		}
@@ -205,7 +385,7 @@ func (g *generator) cueForType(t *TypeSchema) (ast.Expr, error) {
 		if t.MinLength != nil {
 			e = and(e, &ast.CallExpr{
 				Fun: &ast.SelectorExpr{
-					X:   ast.NewIdent("list"),
+					X:   ast.NewIdent(g.addImport("list")),
 					Sel: ast.NewIdent("MinItems"),
 				},
 				Args: []ast.Expr{
@@ -219,7 +399,7 @@ func (g *generator) cueForType(t *TypeSchema) (ast.Expr, error) {
 		if t.MaxLength != nil {
 			e = and(e, &ast.CallExpr{
 				Fun: &ast.SelectorExpr{
-					X:   ast.NewIdent("list"),
+					X:   ast.NewIdent(g.addImport("list")),
 					Sel: ast.NewIdent("MaxItems"),
 				},
 				Args: []ast.Expr{
@@ -312,6 +492,65 @@ func (g *generator) cueForType(t *TypeSchema) (ast.Expr, error) {
 	}
 }
 
+func (g *generator) lexiconValue(kind string, of ast.Expr) ast.Expr {
+	ident := g.addImport("cueschemas.org/lexicue")
+	return &ast.BinaryExpr{
+		X: &ast.SelectorExpr{
+			X:   ast.NewIdent(ident),
+			Sel: ast.NewIdent(kind),
+		},
+		Op: token.AND,
+		Y:  of,
+	}
+}
+
+func (g *generator) refExpr(name string) (ast.Expr, error) {
+	path, def, ok := strings.Cut(name, "#")
+	if ok && path == "" {
+		// Local reference.
+		return ast.NewIdent(def), nil
+	}
+	pkg, err := id2Pkg(path)
+	if err != nil {
+		return nil, err
+	}
+	if pkg == g.pkg {
+		return ast.NewIdent(def), nil
+	}
+	importIdent := g.addImport(pkg)
+	if !ok {
+		return ast.NewIdent(importIdent), nil
+	}
+	return &ast.SelectorExpr{
+		X:   ast.NewIdent(importIdent),
+		Sel: ast.NewIdent(def),
+	}, nil
+}
+
+func (g *generator) addImport(pkg string) string {
+	if ident := g.importsByPkg[pkg]; ident != "" {
+		return ident
+	}
+	ident := impliedImportIdent(pkg)
+	identRoot := ident
+	for i := 0; i < 20; i++ {
+		ident := identRoot
+		if i > 0 {
+			ident = fmt.Sprintf("%s_%d", ident, i)
+		}
+		if g.importsByIdent[ident] == "" {
+			g.importsByIdent[ident] = pkg
+			g.importsByPkg[pkg] = ident
+			return ident
+		}
+	}
+	panic(fmt.Errorf("too many packages named %q", pkg))
+}
+
+func impliedImportIdent(pkgPath string) string {
+	return path.Base(pkgPath)
+}
+
 func withDefault(e ast.Expr, defaultVal ast.Expr) ast.Expr {
 	return or(
 		&ast.UnaryExpr{
@@ -336,7 +575,7 @@ func numericLit(val any, isInt bool) ast.Expr {
 	}
 }
 
-func stringLit(s string) ast.Expr {
+func stringLit(s string) *ast.BasicLit {
 	// TODO choose appropriate kind of string literal depending on content.
 	return &ast.BasicLit{
 		Kind:  token.STRING,
@@ -353,23 +592,21 @@ func inSlice[T comparable](x T, xs []T) bool {
 	return false
 }
 
-func (g *generator) lexiconValue(kind string, of ast.Expr) ast.Expr {
-	return &ast.BinaryExpr{
-		X: &ast.SelectorExpr{
-			X:   g.lexiconPkgIdent,
-			Sel: ast.NewIdent(kind),
-		},
-		Op: token.AND,
-		Y:  of,
+func id2Pkg(p string) (string, error) {
+	parts := strings.Split(p, ".")
+	if len(parts) < 3 {
+		return "", fmt.Errorf("not enough elements in path %q", p)
 	}
-}
-
-func (g *generator) refExpr(name string) (ast.Expr, error) {
-	// TODO
-	return &ast.IndexExpr{
-		X:     ast.NewIdent("#D"),
-		Index: stringLit(name),
-	}, nil
+	var buf strings.Builder
+	buf.WriteString("test.org/")
+	for i := len(parts) - 2; i >= 0; i-- {
+		if i < len(parts)-2 {
+			buf.WriteByte('.')
+		}
+		buf.WriteString(parts[i])
+	}
+	fmt.Fprintf(&buf, "/%s", parts[len(parts)-1])
+	return buf.String(), nil
 }
 
 func sortedKeys[V any](m map[string]V) []string {
@@ -395,4 +632,26 @@ func or(x, y ast.Expr) ast.Expr {
 		Op: token.OR,
 		Y:  y,
 	}
+}
+
+func addField(lit *ast.StructLit, fieldName string, e ast.Expr) {
+	lit.Elts = append(lit.Elts, &ast.Field{
+		Label: ast.NewIdent(fieldName),
+		Value: e,
+	})
+}
+
+// We'd use cuelang.org/go/encoding/json except for https://github.com/cue-lang/cue/issues/2395
+func validateJSON(data []byte, filename string, schema cue.Value) error {
+	v := schema.Context().CompileBytes(data, cue.Filename(filename))
+	v = v.Unify(schema)
+	return v.Validate(cue.Concrete(true))
+}
+
+func rev[T any](xs []T) []T {
+	r := make([]T, 0, len(xs))
+	for i := len(xs) - 1; i >= 0; i-- {
+		r = append(r, xs[i])
+	}
+	return r
 }

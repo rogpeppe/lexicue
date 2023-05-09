@@ -92,8 +92,8 @@ package lexicon
 #LexXrpcQuery: {
 	#Common
 	type!:       "query"
-	parameters!: #LexParams
-	output!:     #LexXrpcBody
+	parameters?: #LexParams
+	output?:     #LexXrpcBody
 	errors?: [... #LexXrpcError]
 }
 
@@ -108,7 +108,7 @@ package lexicon
 #LexXrpcBody: {
 	description?: string
 	encoding!:    string | [... string]
-	schema!:      #LexType
+	schema?:      #LexType
 }
 
 #LexXrpcError: {

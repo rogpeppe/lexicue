@@ -14,17 +14,18 @@ type TypeSchema struct {
 	Description string `json:"description"`
 
 	// record
-	Key    string      `json:"key"`
+	Key    string      `json:"key,omitempty"`
 	Record *TypeSchema `json:"record"`
 
 	// subscription, query
 	Parameters *TypeSchema `json:"parameters"`
+	Message *SubscriptionMessage	`json:"message"`
 
 	// procedure
-	Input *InputType `json:"input"`
+	Input *BodyType `json:"input"`
 
 	// query, procedure
-	Output *OutputType `json:"output"`
+	Output *BodyType `json:"output"`
 
 	// ref
 	Ref string `json:"ref"`
@@ -65,6 +66,22 @@ type TypeSchema struct {
 	// number, integer
 	Minimum any `json:"minimum"`
 	Maximum any `json:"maximum"`
+
+	// string
+	MaxGraphemes *int     `json:"maxGraphemes,omitempty"`
+	KnownValues  []string `json:"knownValues,omitempty"`
+
+	// procedure, query, subscription
+	Errors []Error `json:"errors,omitempty"`
+}
+
+type SubscriptionMessage struct {
+	Schema *TypeSchema 	`json:"schema"`
+}
+
+type Error struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 // TODO(bnewbold): suspect this param needs updating for lex refactors
@@ -74,12 +91,7 @@ type Param struct {
 	Required bool   `json:"required"`
 }
 
-type OutputType struct {
-	Encoding string      `json:"encoding"`
-	Schema   *TypeSchema `json:"schema"`
-}
-
-type InputType struct {
+type BodyType struct {
 	Encoding string      `json:"encoding"`
 	Schema   *TypeSchema `json:"schema"`
 }

@@ -2,25 +2,25 @@ package lexicon
 
 #Doc: {
 	lexicon!: 1
-	defs: or([
-		for def in _#defs {
+	defs:     or([
+			for def in _#defs {
 			def
-		}
+		},
 	])
 }
 
 _#defs: {
 	xrpcProcedure: {
 		_lexicon!: "procedure"
-		input?: #xrpcBody
-		output?: #xrpcBody
+		input?:    #xrpcBody
+		output?:   #xrpcBody
 		errors?: [... #xrpcError]
 	}
 
 	xrpcQuery: {
 		_lexicon!: "query"
-		parameters!: {...}
-		output!: #xrpcBody
+		parameters?: {...}
+		output?: #xrpcBody
 		errors?: [... #xrpcError]
 	}
 
@@ -60,19 +60,21 @@ _#defs: {
 	}
 
 	token!: {
-		token!: string
+		token!:   string
 		_lexicon: "token"
 	}
 
 	record!: {
 		_lexicon: "record"
-		key?: string
+		key?:     string
 		record!: {...}
 	}
 
 	subscription!: {
 		_lexicon: "subscription"
 		parameters!: {...}
+		// TODO should we just fold the schema directly into the message field
+		// instead of using the #subscriptionMessage indirection?
 		message?: #subscriptionMessage
 		errors?: [... #xrpcError]
 	}
@@ -86,12 +88,15 @@ for name, def in _#defs {
 
 #xrpcBody: {
 	description?: string
-	encoding!:    string | [... string]
-	schema!: _
+	// The original seemed to allow an array of string for encoding:
+	// encoding!:    string | [... string]
+	// but in practice that doesn't seem to happen.
+	encoding!: string
+	schema?:   _
 }
 
 #xrpcError: {
-	name!: string
+	name!:        string
 	description!: string
 }
 
