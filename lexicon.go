@@ -18,8 +18,8 @@ type TypeSchema struct {
 	Record *TypeSchema `json:"record"`
 
 	// subscription, query
-	Parameters *TypeSchema `json:"parameters"`
-	Message *SubscriptionMessage	`json:"message"`
+	Parameters *TypeSchema          `json:"parameters"`
+	Message    *SubscriptionMessage `json:"message"`
 
 	// procedure
 	Input *BodyType `json:"input"`
@@ -46,6 +46,7 @@ type TypeSchema struct {
 	MinLength *int `json:"minLength,omitempty"`
 
 	// video, audio, array, string, bytes
+	// Note: int might not be OK for video, audio
 	MaxLength *int `json:"maxLength,omitempty"`
 
 	// array
@@ -71,12 +72,20 @@ type TypeSchema struct {
 	MaxGraphemes *int     `json:"maxGraphemes,omitempty"`
 	KnownValues  []string `json:"knownValues,omitempty"`
 
+	// blob, audio, image, video
+	MaxSize *int     `json:"maxSize,omitEmpty"`
+	Accept  []string `json:"accept,omitEmpty"`
+
+	// image, video
+	MaxWidth  *int `json:"maxWidth,omitEmpty"`
+	MaxHeight *int `json:"maxHeight,omitEmpty"`
+
 	// procedure, query, subscription
 	Errors []Error `json:"errors,omitempty"`
 }
 
 type SubscriptionMessage struct {
-	Schema *TypeSchema 	`json:"schema"`
+	Schema *TypeSchema `json:"schema"`
 }
 
 type Error struct {

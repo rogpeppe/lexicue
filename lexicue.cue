@@ -1,4 +1,4 @@
-package lexicon
+package lexicue
 
 #Doc: {
 	lexicon!: 1
@@ -10,14 +10,14 @@ package lexicon
 }
 
 _#defs: {
-	xrpcProcedure: {
+	procedure: {
 		_lexicon!: "procedure"
 		input?:    #xrpcBody
 		output?:   #xrpcBody
 		errors?: [... #xrpcError]
 	}
 
-	xrpcQuery: {
+	query: {
 		_lexicon!: "query"
 		parameters?: {...}
 		output?: #xrpcBody
@@ -31,46 +31,36 @@ _#defs: {
 
 	blob: {
 		_lexicon!: "blob"
-		accept?: [... string]
-		maxSize?: int
+		#blob
 	}
 
 	image: {
 		_lexicon!: "image"
-		accept?: [... string]
-		maxSize?:   int
-		maxWidth?:  number
-		maxHeight?: number
+		#image
 	}
 
 	video: {
-		_lexicon!: "image"
-		accept?: [... string]
-		maxSize?:   int
-		maxWidth?:  number
-		maxHeight?: number
-		maxLength?: number
+		_lexicon!: "video"
+		#video
 	}
 
-	audio!: {
+	audio: {
 		_lexicon: "audio"
-		accept?: [... string]
-		maxSize?:   int
-		maxLength?: number
+		#audio
 	}
 
-	token!: {
-		token!:   string
+	token: {
+		string
 		_lexicon: "token"
 	}
 
-	record!: {
+	record: {
 		_lexicon: "record"
 		key?:     string
 		record!: {...}
 	}
 
-	subscription!: {
+	subscription: {
 		_lexicon: "subscription"
 		parameters!: {...}
 		// TODO should we just fold the schema directly into the message field
@@ -101,9 +91,43 @@ for name, def in _#defs {
 }
 
 #cidLink: {
-	$link!: string
+	$link!: =~"^Qm[1-9A-HJ-NP-Za-km-z]{44}|[\u00000fFbBcCvVtTkKzZmuMU]$"
 }
 
 #subscriptionMessage: {
 	schema!: _
+}
+
+#blob: {
+	$type!:    "blob"
+	ref!:      #cidLink
+	mimeType!: string
+	size!:     uint
+} | #legacyBlob
+
+#legacyBlob: {
+	$type?:    !="blob"
+	cid!:      string
+	mimeType!: string
+}
+
+#image: {
+	mimeType!: string
+	size!: int
+	width!: number
+	height!: number
+}
+
+#video: {
+	mimeType!: string
+	size!: int
+	width!: number
+	height!: number
+	length!: number
+}
+
+#audio: {
+	mimeType!: string
+	size!: int
+	length!: number
 }

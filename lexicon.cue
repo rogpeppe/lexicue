@@ -125,17 +125,20 @@ package lexicon
 // =
 
 #LexBlob: {
-	#Common
+	#BlobCommon
 	type!: "blob"
+}
+
+#BlobCommon: {
+	#Common
 	accept?: [... string]
 	maxSize?: int
 }
 
+
 #LexImage: {
-	#Common
+	#BlobCommon
 	type!: "image"
-	accept?: [... string]
-	maxSize?:   int
 	maxWidth?:  number
 	maxHeight?: number
 }
@@ -143,8 +146,6 @@ package lexicon
 #LexVideo: {
 	#Common
 	type!: "video"
-	accept?: [... string]
-	maxSize?:   int
 	maxWidth?:  number
 	maxHeight?: number
 	maxLength?: number
@@ -153,8 +154,6 @@ package lexicon
 #LexAudio: {
 	#Common
 	type!: "audio"
-	accept?: [... string]
-	maxSize?:   int
 	maxLength?: number
 }
 
@@ -213,6 +212,7 @@ package lexicon
 #LexString: {
 	#Common
 	type!:         "string"
+	ref?: string		// TODO what's this?
 	format?:       string // TODO rog
 	default?:      string
 	minLength?:    int
