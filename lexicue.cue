@@ -45,23 +45,23 @@ _#defs: {
 	}
 
 	audio: {
-		_lexicon: "audio"
+		_lexicon!: "audio"
 		#audio
 	}
 
 	token: {
+		_lexicon!: "token"
 		string
-		_lexicon: "token"
 	}
 
 	record: {
-		_lexicon: "record"
+		_lexicon!: "record"
 		key?:     string
 		record!: {...}
 	}
 
 	subscription: {
-		_lexicon: "subscription"
+		_lexicon!: "subscription"
 		parameters!: {...}
 		// TODO should we just fold the schema directly into the message field
 		// instead of using the #subscriptionMessage indirection?
@@ -72,6 +72,7 @@ _#defs: {
 
 for name, def in _#defs {
 	(name): def & {
+		_
 		_lexicon: _
 	}
 }
@@ -131,3 +132,4 @@ for name, def in _#defs {
 	size!: int
 	length!: number
 }
+
