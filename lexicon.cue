@@ -46,11 +46,13 @@ package lexicon
 }
 
 #LexRef: string | {
+	#Common
 	type!: "ref"
 	ref!:  string
 }
 
 #LexUnion: {
+	#Common
 	type!: "union"
 	refs!: [... #LexRef]
 	closed?: bool // can this be false?

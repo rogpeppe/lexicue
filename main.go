@@ -62,6 +62,7 @@ func main() {
 	fmt.Println()
 	fmt.Printf("-- cue.mod/module.cue --\n")
 	fmt.Printf("module: %q\n", moduleRoot)
+	fmt.Printf("language: version: %q\n", "v0.10.0")
 	deps := &dependencies{
 		arcs: make(map[arc]map[arc]bool),
 	}
